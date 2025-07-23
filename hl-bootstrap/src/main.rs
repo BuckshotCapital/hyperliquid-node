@@ -1,15 +1,17 @@
 use std::{
     collections::HashSet,
+    env::current_dir,
     ffi::OsString,
     fs::{self, OpenOptions},
     net::Ipv4Addr,
     path::PathBuf,
+    process::Command,
 };
 
 use clap::Parser;
 use duration_string::DurationString;
 use eyre::{Context, bail};
-use tokio::runtime::Builder;
+use tokio::runtime::{Builder, Runtime};
 use tracing::{debug, error, info, level_filters::LevelFilter, trace, warn};
 use tracing_subscriber::{
     EnvFilter,
@@ -20,12 +22,14 @@ use tracing_subscriber::{
 
 mod hl_gossip_config;
 mod hl_visor_config;
+mod prune;
 mod speedtest;
 mod sysctl;
 
 use crate::{
     hl_gossip_config::{HyperliquidChain, OverrideGossipConfig, fetch_hyperliquid_seed_peers},
     hl_visor_config::read_hl_visor_config,
+    prune::prune_worker_task,
     speedtest::speedtest_nodes,
     sysctl::read_sysctl,
 };
@@ -76,6 +80,14 @@ struct Cli {
     )]
     ignore_ipv6_enabled: bool,
 
+    /// Whether to spawn data directory pruning task. This is used when hl-bootstrap has child process to execute
+    #[arg(long, env = "HL_BOOTSTRAP_PRUNE_DATA_INTERVAL")]
+    prune_data_interval: Option<DurationString>,
+
+    /// Whether to prune data older than the specified duration
+    #[arg(long, env = "HL_BOOTSTRAP_PRUNE_DATA_OLDER_THAN", default_value = "4h")]
+    prune_data_older_than: DurationString,
+
     /// Chain to set up configuration for
     #[arg(long, env = "HL_BOOTSTRAP_NETWORK")]
     network: Option<HyperliquidChain>,
@@ -103,18 +115,61 @@ fn main() -> eyre::Result<()> {
 
     trace!(?args, "args");
 
-    let runtime = Builder::new_current_thread().enable_all().build()?;
+    let use_mt = args.prune_data_interval.is_some();
+
+    let runtime = if use_mt {
+        Builder::new_multi_thread()
+    } else {
+        Builder::new_current_thread()
+    }
+    .enable_all()
+    .build()?;
     runtime.block_on(prepare_hl_node(&args))?;
 
-    if !args.args.is_empty() {
-        info!(args = ?args.args, "setup done, executing hl-visor");
-        let err = exec::Command::new(&args.args[0])
-            .args(&args.args[1..])
-            .exec();
-        error!(?err, ?args.args, "failed to exec");
-    } else {
+    if args.args.is_empty() {
         info!("setup done");
+        return Ok(());
     }
+
+    run_node(runtime, &args)?;
+
+    Ok(())
+}
+
+fn run_node(rt: Runtime, args: &Cli) -> eyre::Result<()> {
+    info!(args = ?args.args, "setup done, executing hl-visor");
+
+    if args.prune_data_interval.is_none() {
+        // Just exec into the child
+        let err = exec::Command::new("hl-visor").args(&args.args).exec();
+        error!(?err, ?args.args, "failed to exec");
+        std::process::exit(1);
+    }
+
+    // TODO: configurable in future
+    let data_directory = current_dir().wrap_err("failed to get current working directory")?;
+    let prune_interval = args.prune_data_interval.unwrap();
+    let prune_data_older_than = args.prune_data_older_than;
+
+    // Otherwise spawn the task and run child in the foreground
+    let _prune_task = rt.spawn(async move {
+        if let Err(err) = prune_worker_task(
+            data_directory,
+            prune_interval.into(),
+            prune_data_older_than.into(),
+        )
+        .await
+        {
+            error!(?err, "failed to start pruning task");
+        }
+    });
+
+    let mut child = Command::new("hl-visor")
+        .args(&args.args)
+        .spawn()
+        .wrap_err("failed to spawn child")?;
+
+    child.wait().wrap_err("failed to wait for child")?;
 
     Ok(())
 }

@@ -23,7 +23,3 @@ Features:
 ## Running
 
 Build the image, run with binding 4000-4010/tcp to public interface. Hyperliquid RPC will be exposed on port 3001, serving both /evm and /info endpoints.
-
-## TODO
-- Worker for pruning data directory
-  - Right now this needs to be done externally
