@@ -1,0 +1,16 @@
+services:
+  hl-node:
+    build:
+      dockerfile: "Dockerfile"
+      context: .
+    restart: "always"
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: "1"
+    volumes:
+      - "hl-data:/data"
+    ports:
+      - "127.0.0.1:3001:3001"
+      - "4000-4010"
+
+volumes:
+  hl-data: {}
