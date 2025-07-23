@@ -124,4 +124,4 @@ EXPOSE 3001/tcp
 # P2P
 EXPOSE 4000-4010
 ENTRYPOINT ["/usr/bin/catatonit", "--", "hl-bootstrap", "--override-gossip-config-path=/data/override_gossip_config.json", "--"]
-CMD ["run-non-validator", "--write-trades", "--write-fills", "--write-order-statuses", "--serve-eth-rpc", "--serve-info"]
+CMD ["run-non-validator", "--write-trades", "--write-fills", "--write-order-statuses", "--serve-eth-rpc", "--serve-info", "--disable-output-file-buffering"]
