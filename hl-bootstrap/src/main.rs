@@ -1,6 +1,8 @@
 use std::{
+    collections::HashSet,
     ffi::OsString,
     fs::{self, OpenOptions},
+    net::Ipv4Addr,
     path::PathBuf,
 };
 
@@ -61,6 +63,10 @@ struct Cli {
         default_value = "80ms"
     )]
     seed_peers_max_latency: DurationString,
+
+    /// Ignore known bad seed peers by IP
+    #[arg(long, env = "HL_BOOTSTRAP_SEED_PEERS_IGNORED", value_delimiter = ',')]
+    seed_peers_ignored: Vec<Ipv4Addr>,
 
     /// Whether to ignore net.ipv6.conf.all.disable_ipv6 == 1. Due to hl-node bug, IPv6 being available to the node breaks it.
     #[arg(
@@ -141,6 +147,8 @@ async fn prepare_hl_node(args: &Cli) -> eyre::Result<()> {
     };
     info!(?network, "preparing hl-node configuration");
 
+    let ignored_seed_peers = HashSet::from_iter(args.seed_peers_ignored.clone());
+
     if let Ok(metadata) = fs::metadata(&args.override_gossip_config_path)
         && metadata.is_file()
     {
@@ -166,8 +174,8 @@ async fn prepare_hl_node(args: &Cli) -> eyre::Result<()> {
     // TODO: load existing configuration
     let mut config = OverrideGossipConfig::new(network);
 
-    info!(?network, "fetching seed nodes");
-    let seed_nodes = fetch_hyperliquid_seed_peers(network).await?;
+    info!(?network, ?ignored_seed_peers, "fetching seed nodes");
+    let seed_nodes = fetch_hyperliquid_seed_peers(network, &ignored_seed_peers).await?;
     info!(?network, count = seed_nodes.len(), "got seed nodes");
 
     if !seed_nodes.is_empty() {

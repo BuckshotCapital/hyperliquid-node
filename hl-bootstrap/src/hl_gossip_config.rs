@@ -1,9 +1,9 @@
-use std::{net::Ipv4Addr, str::FromStr};
+use std::{collections::HashSet, net::Ipv4Addr, str::FromStr};
 
 use eyre::{Context, ContextCompat, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tracing::warn;
+use tracing::{debug, warn};
 
 structstruck::strike! {
     #[structstruck::each[derive(Clone, Debug, Deserialize, Serialize)]]
@@ -79,6 +79,7 @@ impl From<HyperliquidSeedPeer> for NodeIp {
 
 pub async fn fetch_hyperliquid_seed_peers(
     chain: HyperliquidChain,
+    ignored_peers: &HashSet<Ipv4Addr>,
 ) -> eyre::Result<Vec<HyperliquidSeedPeer>> {
     if !matches!(chain, HyperliquidChain::Mainnet) {
         warn!(?chain, "no seed nodes source for chain");
@@ -131,6 +132,11 @@ pub async fn fetch_hyperliquid_seed_peers(
                     .parse()
                     .wrap_err("failed to parse operator ipv4 address")?;
 
+                if ignored_peers.contains(&ip) {
+                    debug!(operator_name, ?ip, "skipping ignored seed node");
+                    continue;
+                }
+
                 csv_lines.push(HyperliquidSeedPeer {
                     operator_name: operator_name.to_string(),
                     ip,
@@ -168,7 +174,9 @@ mod tests {
     // Requires network access
     #[tokio::test]
     async fn test_fetch_seed_peers() -> eyre::Result<()> {
-        let seed_peers = fetch_hyperliquid_seed_peers(HyperliquidChain::Mainnet).await?;
+        let ignored_peers = Default::default();
+        let seed_peers =
+            fetch_hyperliquid_seed_peers(HyperliquidChain::Mainnet, &ignored_peers).await?;
 
         assert!(!seed_peers.is_empty(), "Should have at least one entry");
 
