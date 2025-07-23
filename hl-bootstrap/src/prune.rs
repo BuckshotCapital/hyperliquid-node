@@ -11,36 +11,36 @@ pub async fn prune_worker_task<P: AsRef<Path>>(
     prune_interval: Duration,
     prune_older_than: Duration,
 ) -> eyre::Result<()> {
-    let base_path = base_path.as_ref();
+    let base_path = base_path.as_ref().join("hl/data");
 
     let mut interval = interval(prune_interval);
     interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
     interval.tick().await; // will complete immediately, as per interval API
 
     info!(?base_path, ?prune_older_than, "pruning node data directory");
-    if let Err(err) = run_cleanup(base_path, prune_older_than).await {
+    if let Err(err) = run_cleanup(&base_path, prune_older_than).await {
         warn!(?err, "initial node data prune failed");
     }
 
     loop {
         interval.tick().await;
 
-        if let Err(err) = run_cleanup(base_path, prune_older_than).await {
+        if let Err(err) = run_cleanup(&base_path, prune_older_than).await {
             warn!(?err, ?prune_older_than, "scheduled node data prune failed");
         }
     }
 }
 
-async fn run_cleanup<P: AsRef<Path>>(base_path: P, prune_older_than: Duration) -> eyre::Result<()> {
-    let base_path = base_path.as_ref();
+async fn run_cleanup<P: AsRef<Path>>(data_path: P, prune_older_than: Duration) -> eyre::Result<()> {
+    let data_path = data_path.as_ref();
     let now = SystemTime::now();
 
     let mut files_to_remove = Vec::new();
 
     // Walk directory tree depth-first (equivalent to -depth flag)
     collect_files_recursive(
-        base_path,
-        base_path,
+        data_path,
+        data_path,
         &mut files_to_remove,
         prune_older_than,
         now,
