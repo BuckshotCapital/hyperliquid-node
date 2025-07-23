@@ -105,14 +105,6 @@ EOF
 
 COPY --from=hl-bootstrap-builder /build/hl-bootstrap /usr/local/bin/hl-bootstrap
 
-# We MUST execute hl-visor via shell, because otherwise it'll fail like:
-# 2025-06-13T16:13:38.940Z WARN >>> hl-visor @@ starting visor
-#
-# thread 'main' panicked at /home/ubuntu/hl/code_Mainnet/net_utils/src/system.rs:57:9:
-# more than one matching proc found for keywords matching_procs={Pid(1): "/usr/bin/catatonit -- hl-visor run-non-validator --write-trades --write-fills --write-order-statuses --serve-eth-rpc Sleep 1749831218", Pid(2): "hl-visor run-non-validator --write-trades --write-fills --write-order-statuses --serve-eth-rpc Sleep 1749831218"} binary_name=hl-visor
-# note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-COPY entrypoint.sh /entrypoint.sh
-
 VOLUME /data
 WORKDIR /data
 
@@ -131,5 +123,5 @@ ENV HL_BOOTSTRAP_NETWORK=${NETWORK}
 EXPOSE 3001/tcp
 # P2P
 EXPOSE 4000-4010
-ENTRYPOINT ["/usr/bin/catatonit", "--"]
-CMD ["/entrypoint.sh"]
+ENTRYPOINT ["/usr/bin/catatonit", "--", "hl-bootstrap", "--override-gossip-config-path=/data/override_gossip_config.json", "--"]
+CMD ["run-non-validator", "--write-trades", "--write-fills", "--write-order-statuses", "--serve-eth-rpc", "--serve-info"]

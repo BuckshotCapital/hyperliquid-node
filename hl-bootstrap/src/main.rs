@@ -99,6 +99,20 @@ struct Cli {
 fn main() -> eyre::Result<()> {
     let args = Cli::parse();
 
+    // As hl-bootstrap is usually used in ENTRYPOINT, then bail out when first argument is
+    // obviously not related to Hyperliquid (e.g. just running bash, for whatever purpose)
+    if let Some(first_arg) = args.args.first()
+        && first_arg != "run-non-validator"
+        && first_arg != "run-validator"
+    {
+        let err = exec::Command::new(&args.args[0])
+            .args(&args.args[1..])
+            .exec();
+
+        eprintln!("{}", err);
+        std::process::exit(1);
+    }
+
     tracing_subscriber::registry()
         .with(
             fmt::layer()
