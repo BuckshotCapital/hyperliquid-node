@@ -23,8 +23,8 @@ jobs:
         include:
           - network: "Mainnet"
             tag: "mainnet"
-          # - network: "Testnet"
-          #   tag: "testnet"
+          - network: "Testnet"
+            tag: "testnet"
 
     steps:
       - name: "Checkout repository"

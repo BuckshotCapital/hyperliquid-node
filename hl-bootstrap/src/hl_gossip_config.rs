@@ -3,7 +3,7 @@ use std::{collections::HashSet, net::Ipv4Addr, str::FromStr};
 use eyre::{Context, ContextCompat, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tracing::{debug, warn};
+use tracing::debug;
 
 structstruck::strike! {
     #[structstruck::each[derive(Clone, Debug, Deserialize, Serialize)]]
@@ -81,11 +81,15 @@ pub async fn fetch_hyperliquid_seed_peers(
     chain: HyperliquidChain,
     ignored_peers: &HashSet<Ipv4Addr>,
 ) -> eyre::Result<Vec<HyperliquidSeedPeer>> {
-    if !matches!(chain, HyperliquidChain::Mainnet) {
-        warn!(?chain, "no seed nodes source for chain");
-        return Ok(Default::default());
+    match chain {
+        HyperliquidChain::Mainnet => fetch_mainnet_seed_peers(ignored_peers).await,
+        HyperliquidChain::Testnet => fetch_testnet_seed_peers(ignored_peers).await,
     }
+}
 
+async fn fetch_mainnet_seed_peers(
+    ignored_peers: &HashSet<Ipv4Addr>,
+) -> eyre::Result<Vec<HyperliquidSeedPeer>> {
     // Unfortunately there is no other source as of 2025-07-23 for non-validating seed nodes,
     // so we have to extract these from README.md! Holy fucking shit honestly, but have to make do
     // with what we have.
@@ -146,6 +150,38 @@ pub async fn fetch_hyperliquid_seed_peers(
     }
 
     Ok(csv_lines)
+}
+
+async fn fetch_testnet_seed_peers(
+    ignored_peers: &HashSet<Ipv4Addr>,
+) -> eyre::Result<Vec<HyperliquidSeedPeer>> {
+    // Imperator.co is generous
+    let url = "https://hyperliquid-testnet.imperator.co/peers.json";
+
+    let config: OverrideGossipConfig = reqwest::get(url)
+        .await
+        .wrap_err("failed to get testnet seed nodes")?
+        .error_for_status()?
+        .json()
+        .await
+        .wrap_err("failed to parse testnet override_gossip_config")?;
+
+    let operator_name = "Imperator.co";
+
+    let mut seeds = Vec::new();
+    for node in config.root_node_ips {
+        if ignored_peers.contains(&node.ip) {
+            debug!(operator_name, ip = ?node.ip, "skipping ignored seed node");
+            continue;
+        }
+
+        seeds.push(HyperliquidSeedPeer {
+            operator_name: operator_name.to_string(),
+            ip: node.ip,
+        });
+    }
+
+    Ok(seeds)
 }
 
 #[cfg(test)]
