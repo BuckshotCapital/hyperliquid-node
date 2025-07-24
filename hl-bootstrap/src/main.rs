@@ -3,7 +3,7 @@ use std::{
     env::current_dir,
     ffi::OsString,
     fs::{self},
-    net::Ipv4Addr,
+    net::{Ipv4Addr, SocketAddr},
     path::PathBuf,
     process::Command,
 };
@@ -23,6 +23,7 @@ use tracing_subscriber::{
 
 mod hl_gossip_config;
 mod hl_visor_config;
+mod monitor;
 mod prune;
 mod speedtest;
 mod sysctl;
@@ -89,6 +90,26 @@ struct Cli {
     #[arg(long, env = "HL_BOOTSTRAP_PRUNE_DATA_OLDER_THAN", default_value = "4h")]
     prune_data_older_than: DurationString,
 
+    /// Whether to enable Prometheus metrics collection
+    #[arg(long, env = "HL_BOOTSTRAP_METRICS_LISTEN_ADDRESS")]
+    metrics_listen_address: Option<SocketAddr>,
+
+    /// How often should the /info exchangeStatus request be done
+    #[arg(
+        long,
+        env = "HL_BOOTSTRAP_METRICS_STATUS_POLL_INTERVAL",
+        default_value = "100ms"
+    )]
+    metrics_status_poll_interval: DurationString,
+
+    /// How much is node allowed to be behind the system time before reporting it unhealthy
+    #[arg(
+        long,
+        env = "HL_BOOTSTRAP_METRICS_HEALTHY_DRIFT_THRESHOLD",
+        default_value = "2500ms"
+    )]
+    metrics_healthy_drift_threshold: DurationString,
+
     /// Chain to set up configuration for
     #[arg(long, env = "HL_BOOTSTRAP_NETWORK")]
     network: Option<HyperliquidChain>,
@@ -130,7 +151,7 @@ fn main() -> eyre::Result<()> {
 
     trace!(?args, "args");
 
-    let use_mt = args.prune_data_interval.is_some();
+    let use_mt = args.prune_data_interval.is_some() || args.metrics_listen_address.is_some();
 
     let runtime = if use_mt {
         Builder::new_multi_thread()
@@ -154,7 +175,7 @@ fn main() -> eyre::Result<()> {
 fn run_node(rt: Runtime, args: &Cli) -> eyre::Result<()> {
     info!(args = ?args.args, "setup done, executing hl-visor");
 
-    if args.prune_data_interval.is_none() {
+    if args.prune_data_interval.is_none() && args.metrics_listen_address.is_none() {
         // Just exec into the child
         let err = exec::Command::new("hl-visor").args(&args.args).exec();
         error!(?err, ?args.args, "failed to exec");
@@ -163,20 +184,36 @@ fn run_node(rt: Runtime, args: &Cli) -> eyre::Result<()> {
 
     // TODO: configurable in future
     let data_directory = current_dir().wrap_err("failed to get current working directory")?;
-    let prune_interval = args.prune_data_interval.unwrap();
-    let prune_data_older_than = args.prune_data_older_than;
 
-    // Otherwise spawn the task and run child in the foreground
-    let _prune_task = rt.spawn(async move {
-        if let Err(err) = prune_worker_task(
-            data_directory,
-            prune_interval.into(),
-            prune_data_older_than.into(),
-        )
-        .await
-        {
-            error!(?err, "failed to start pruning task");
-        }
+    let _prune_task = args.prune_data_interval.map(|prune_interval| {
+        rt.spawn({
+            let prune_data_older_than = args.prune_data_older_than;
+
+            prune_worker_task(
+                data_directory,
+                prune_interval.into(),
+                prune_data_older_than.into(),
+            )
+        })
+    });
+
+    let _poll_task = args.metrics_listen_address.is_some().then(|| {
+        rt.spawn(crate::monitor::poll_node(
+            args.metrics_status_poll_interval.into(),
+        ))
+    });
+
+    let _metrics_server = args.metrics_listen_address.map(|address| {
+        let metrics_healthy_drift_threshold = args.metrics_healthy_drift_threshold.into();
+        rt.spawn(async move {
+            info!(%address, "starting metrics server");
+            if let Err(err) =
+                crate::monitor::server::run_metrics_server(address, metrics_healthy_drift_threshold)
+                    .await
+            {
+                error!(?err, "failed to start metrics server")
+            }
+        })
     });
 
     let mut child = Command::new("hl-visor")

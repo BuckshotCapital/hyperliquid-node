@@ -10,7 +10,7 @@ pub async fn prune_worker_task<P: AsRef<Path>>(
     base_path: P,
     prune_interval: Duration,
     prune_older_than: Duration,
-) -> eyre::Result<()> {
+) {
     let base_path = base_path.as_ref().join("hl/data");
 
     let mut interval = interval(prune_interval);
