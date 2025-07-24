@@ -2,7 +2,7 @@ use std::{
     collections::HashSet,
     env::current_dir,
     ffi::OsString,
-    fs::{self, OpenOptions},
+    fs::{self},
     net::Ipv4Addr,
     path::PathBuf,
     process::Command,
@@ -10,7 +10,8 @@ use std::{
 
 use clap::Parser;
 use duration_string::DurationString;
-use eyre::{Context, bail};
+use eyre::{Context, ContextCompat, bail};
+use tempfile::NamedTempFile;
 use tokio::runtime::{Builder, Runtime};
 use tracing::{debug, error, info, level_filters::LevelFilter, trace, warn};
 use tracing_subscriber::{
@@ -109,7 +110,7 @@ fn main() -> eyre::Result<()> {
             .args(&args.args[1..])
             .exec();
 
-        eprintln!("{}", err);
+        eprintln!("{err}");
         std::process::exit(1);
     }
 
@@ -240,6 +241,11 @@ async fn prepare_hl_node(args: &Cli) -> eyre::Result<()> {
         }
     }
 
+    let config_path_directory = args
+        .override_gossip_config_path
+        .parent()
+        .wrap_err("failed to determine override_gossip_config.json directory")?;
+
     // TODO: load existing configuration
     let mut config = OverrideGossipConfig::new(network);
 
@@ -276,15 +282,13 @@ async fn prepare_hl_node(args: &Cli) -> eyre::Result<()> {
         }
     }
 
-    // TODO: do atomic replace
-    let mut new_config_file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&args.override_gossip_config_path)?;
-
+    let mut new_config_file = NamedTempFile::new_in(config_path_directory)?;
     serde_json::to_writer(&mut new_config_file, &config)
         .wrap_err("failed to write new configuration")?;
+
+    new_config_file
+        .persist(&args.override_gossip_config_path)
+        .wrap_err("failed to replace override_gossip_config.json")?;
 
     Ok(())
 }
