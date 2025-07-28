@@ -59,6 +59,18 @@ RUN --mount=type=cache,sharing=locked,target=/target,ro \
 FROM ubuntu:24.04
 
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
+
+RUN <<-EOF
+groupadd -r hyperliquid -g 10001
+useradd -r -g hyperliquid -u 10001 -d /home/hyperliquid -s /bin/bash hyperliquid
+EOF
+
+RUN <<-EOF
+# Create base directory structure
+install -d -m 755 -o root -g root /opt/hl /opt/hl/lib
+install -d -m 755 -o hyperliquid -g hyperliquid /home/hyperliquid /data /opt/hl/bin
+EOF
+
 RUN <<-EOF
 apt-get update
 apt-get install -y curl ca-certificates catatonit gnupg2
@@ -71,13 +83,9 @@ gpg --import /root/hl-pubkey.asc
 rm /root/hl-pubkey.asc
 EOF
 
-WORKDIR /hl
-
 ARG NETWORK="Mainnet"
 
 RUN <<-EOF
-mkdir -v -p /opt/hl/bin /opt/hl/lib
-
 binary_url=""
 sig_url=""
 case "${NETWORK}" in
@@ -106,16 +114,23 @@ chmod 755 /opt/hl/bin/hl-visor
 rm /tmp/hl-visor.asc
 EOF
 
+RUN <<-EOF
+cp -rv /root/.gnupg /home/hyperliquid/.gnupg
+chown -R hyperliquid:hyperliquid /home/hyperliquid/.gnupg
+EOF
+
 COPY --from=hl-bootstrap-builder /build/hl-bootstrap /usr/local/bin/hl-bootstrap
+
+USER hyperliquid:hyperliquid
 
 VOLUME /opt/hl/bin
 VOLUME /data
 WORKDIR /data
 
-# Hyperliquid loves to store data in HOME
 RUN <<-EOF
+chown hyperliquid:hyperliquid /data
 mkdir -p /data/hl/data
-ln -s /data/hl /root/hl
+ln -s /data/hl /home/hyperliquid/hl
 EOF
 
 ENV PATH=/opt/hl/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
