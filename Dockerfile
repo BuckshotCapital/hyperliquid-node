@@ -76,6 +76,8 @@ WORKDIR /hl
 ARG NETWORK="Mainnet"
 
 RUN <<-EOF
+mkdir -v -p /opt/hl/bin /opt/hl/lib
+
 binary_url=""
 sig_url=""
 case "${NETWORK}" in
@@ -93,18 +95,20 @@ case "${NETWORK}" in
 		;;
 esac
 
-echo '{"chain": "'"${NETWORK}"'"}' > /usr/local/bin/visor.json
+echo '{"chain": "'"${NETWORK}"'"}' > /opt/hl/lib/visor.json
+ln -svf ../lib/visor.json /opt/hl/bin/visor.json
 
-curl -o /usr/local/bin/hl-visor "${binary_url}"
+curl -o /opt/hl/bin/hl-visor "${binary_url}"
 curl -o /tmp/hl-visor.asc "${sig_url}"
 
-gpg --verify /tmp/hl-visor.asc /usr/local/bin/hl-visor
-chmod 755 /usr/local/bin/hl-visor
+gpg --verify /tmp/hl-visor.asc /opt/hl/bin/hl-visor
+chmod 755 /opt/hl/bin/hl-visor
 rm /tmp/hl-visor.asc
 EOF
 
 COPY --from=hl-bootstrap-builder /build/hl-bootstrap /usr/local/bin/hl-bootstrap
 
+VOLUME /opt/hl/bin
 VOLUME /data
 WORKDIR /data
 
@@ -114,6 +118,8 @@ mkdir -p /data/hl/data
 ln -s /data/hl /root/hl
 EOF
 
+ENV PATH=/opt/hl/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
 ENV HL_BOOTSTRAP_OVERRIDE_GOSSIP_CONFIG_MAX_AGE=15m
 ENV HL_BOOTSTRAP_SEED_PEERS_AMOUNT=5
 ENV HL_BOOTSTRAP_SEED_PEERS_MAX_LATENCY=80ms
@@ -122,6 +128,6 @@ ENV HL_BOOTSTRAP_NETWORK=${NETWORK}
 # RPC
 EXPOSE 3001/tcp
 # P2P
-EXPOSE 4000-4010
+EXPOSE 4000-4010/tcp
 ENTRYPOINT ["/usr/bin/catatonit", "--", "hl-bootstrap", "--override-gossip-config-path=/data/override_gossip_config.json", "--"]
 CMD ["run-non-validator", "--write-trades", "--write-fills", "--write-order-statuses", "--serve-eth-rpc", "--serve-info", "--disable-output-file-buffering"]
