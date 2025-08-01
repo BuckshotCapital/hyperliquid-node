@@ -29,7 +29,9 @@ mod speedtest;
 mod sysctl;
 
 use crate::{
-    hl_gossip_config::{HyperliquidChain, OverrideGossipConfig, fetch_hyperliquid_seed_peers},
+    hl_gossip_config::{
+        HyperliquidChain, HyperliquidSeedPeer, OverrideGossipConfig, fetch_hyperliquid_seed_peers,
+    },
     hl_visor_config::read_hl_visor_config,
     prune::prune_worker_task,
     speedtest::speedtest_nodes,
@@ -73,6 +75,10 @@ struct Cli {
     /// Ignore known bad seed peers by IP
     #[arg(long, env = "HL_BOOTSTRAP_SEED_PEERS_IGNORED", value_delimiter = ',')]
     seed_peers_ignored: Vec<Ipv4Addr>,
+
+    /// Extra seed peers to consider
+    #[arg(long, env = "HL_BOOTSTRAP_SEED_PEERS_EXTRA", value_delimiter = ',')]
+    seed_peers_extra: Vec<Ipv4Addr>,
 
     /// Whether to ignore net.ipv6.conf.all.disable_ipv6 == 1. Due to hl-node bug, IPv6 being available to the node breaks it.
     #[arg(
@@ -287,8 +293,22 @@ async fn prepare_hl_node(args: &Cli) -> eyre::Result<()> {
     let mut config = OverrideGossipConfig::new(network);
 
     info!(?network, ?ignored_seed_peers, "fetching seed nodes");
-    let seed_nodes = fetch_hyperliquid_seed_peers(network, &ignored_seed_peers).await?;
+    let mut seed_nodes = fetch_hyperliquid_seed_peers(network, &ignored_seed_peers).await?;
     info!(?network, count = seed_nodes.len(), "got seed nodes");
+
+    if !args.seed_peers_extra.is_empty() {
+        info!(
+            ?network,
+            count = args.seed_peers_extra.len(),
+            "including extra seed peers from args"
+        );
+        for extra_seed in &args.seed_peers_extra {
+            seed_nodes.push(HyperliquidSeedPeer {
+                operator_name: "manual".to_string(),
+                ip: *extra_seed,
+            });
+        }
+    }
 
     if !seed_nodes.is_empty() {
         let tested_seed_nodes = speedtest_nodes(
