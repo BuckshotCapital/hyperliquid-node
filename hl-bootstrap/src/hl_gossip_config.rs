@@ -23,6 +23,7 @@ structstruck::strike! {
             #[serde(rename = "Testnet")]
             Testnet,
         },
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub n_gossip_peers: Option<u16>,
         #[serde(flatten, default)]
         pub unknown: Value,
