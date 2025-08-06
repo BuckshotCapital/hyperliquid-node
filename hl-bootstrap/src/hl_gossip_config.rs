@@ -93,63 +93,104 @@ async fn fetch_mainnet_seed_peers(
     // Unfortunately there is no other source as of 2025-07-23 for non-validating seed nodes,
     // so we have to extract these from README.md! Holy fucking shit honestly, but have to make do
     // with what we have.
+    // Insult to injury, it's now Markdown table
     let url = "https://github.com/hyperliquid-dex/node/raw/refs/heads/main/README.md";
 
     // Fetch the README content
     let response = reqwest::get(url).await?;
     let content = response.text().await?;
 
-    let mut in_block = false;
-    let mut found_header = false;
-    let mut csv_lines = Vec::new();
+    let mut peers = Vec::new();
 
-    for line in content.lines() {
-        // Toggle block state when we encounter ```
-        if line.trim() == "```" {
-            if in_block && found_header {
-                // We've reached the end of our target block
-                break;
-            }
-            in_block = !in_block;
+    // Find the table section that contains the seed peers
+    // Look for the "Mainnet Non-Validator Seed Peers" section
+    let seed_peers_section = content
+        .split("## Mainnet Non-Validator Seed Peers")
+        .nth(1)
+        .wrap_err("could not find 'Mainnet Non-Validator Seed Peers' section from hyperliquid-dex/node README.md")?;
+
+    // Split by next section (starts with ##) to isolate just the peers table
+    let peers_content = seed_peers_section
+        .split("##")
+        .next()
+        .unwrap_or(seed_peers_section);
+
+    // Find the table by looking for lines that start and end with |
+    let lines: Vec<&str> = peers_content.lines().collect();
+    let mut in_table = false;
+    let mut header_found = false;
+
+    for line in lines {
+        let trimmed = line.trim();
+
+        // Skip empty lines
+        if trimmed.is_empty() {
             continue;
         }
 
-        // If we're in a code block and haven't found the header yet
-        if in_block && !found_header && line.starts_with("operator_name,root_ips") {
-            found_header = true;
-            continue; // Skip the header line
-        }
-
-        // If we're in the block and have found the header, collect CSV lines
-        if in_block && found_header {
-            let trimmed = line.trim();
-            if !trimmed.is_empty() {
-                let mut split = trimmed.splitn(2, ',');
-                let operator_name = split
-                    .next()
-                    .wrap_err("failed to get operator name from line")?;
-                let raw_ip = split
-                    .next()
-                    .wrap_err("failed to get operator ip address from line")?;
-
-                let ip: Ipv4Addr = raw_ip
-                    .parse()
-                    .wrap_err("failed to parse operator ipv4 address")?;
-
-                if ignored_peers.contains(&ip) {
-                    debug!(operator_name, ?ip, "skipping ignored seed node");
-                    continue;
-                }
-
-                csv_lines.push(HyperliquidSeedPeer {
-                    operator_name: operator_name.to_string(),
-                    ip,
-                });
+        // Check if this line looks like a markdown table row
+        if trimmed.starts_with('|') && trimmed.ends_with('|') {
+            // Skip separator lines (contains only |, -, and spaces)
+            if trimmed
+                .chars()
+                .all(|c| c == '|' || c == '-' || c.is_whitespace())
+            {
+                in_table = true;
+                continue;
             }
+
+            // Parse the table cells
+            let cells: Vec<&str> = trimmed
+                .split('|')
+                .map(|cell| cell.trim())
+                .filter(|cell| !cell.is_empty())
+                .collect();
+
+            // Skip header row
+            if !header_found
+                && cells.len() >= 2
+                && (cells[0].to_lowercase().contains("operator")
+                    || cells[1].to_lowercase().contains("root")
+                    || cells[1].to_lowercase().contains("ip"))
+            {
+                header_found = true;
+                in_table = true;
+                continue;
+            }
+
+            // Parse data rows
+            if in_table && header_found && cells.len() >= 2 {
+                let operator_name = cells[0].to_string();
+                let ip_str = cells[1];
+
+                // Parse the IP address
+                match ip_str.parse::<Ipv4Addr>() {
+                    Ok(ip) => {
+                        if ignored_peers.contains(&ip) {
+                            debug!(operator_name, ?ip, "skipping ignored seed node");
+                            continue;
+                        }
+
+                        peers.push(HyperliquidSeedPeer { operator_name, ip });
+                    }
+                    Err(err) => {
+                        debug!(?err, ip_str, "failed to parse ip");
+                        continue;
+                    }
+                }
+            }
+        } else if in_table {
+            // If we were in a table but this line doesn't look like a table row,
+            // we've probably reached the end of the table
+            break;
         }
     }
 
-    Ok(csv_lines)
+    if peers.is_empty() {
+        bail!("No valid seed peers found in markdown table");
+    }
+
+    Ok(peers)
 }
 
 async fn fetch_testnet_seed_peers(
