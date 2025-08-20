@@ -128,9 +128,9 @@ VOLUME /data
 WORKDIR /data
 
 RUN <<-EOF
-chown hyperliquid:hyperliquid /data
 mkdir -p /data/hl/data
 ln -s /data/hl /home/hyperliquid/hl
+chown -R hyperliquid:hyperliquid /data
 EOF
 
 ENV PATH=/opt/hl/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
