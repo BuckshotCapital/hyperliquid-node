@@ -15,7 +15,8 @@ sync with the network reliably, ensuring it has reasonable peers set up.
 Features:
 - Enforces correct network name check
 - Sets up non-validating peer IPs for gossip from known source
-  - Uses [hyperliquid-dex/node README.md](https://github.com/hyperliquid-dex/node/blob/main/README.md#mainnet-non-validator-seed-peers) to extract possible non-validator seed peers
+  - Requests gossip IPs via `{"type": "gossipRootIps"}` method from Hyperliquid API for mainnet
+  - Uses [Imperator](https://www.imperator.co/)'s peers json endpoint for testnet
   - Measures, filters and orders obtained seed peers by latency (default threshold is 80ms to avoid cross-continent connections)
 - Checks for common runtime environment misconfigurations
   - IPv6 enabled check (see [notes](notes.md))
