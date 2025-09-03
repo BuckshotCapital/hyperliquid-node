@@ -1,4 +1,5 @@
 use std::{
+    fmt,
     net::{Ipv4Addr, SocketAddr},
     sync::Arc,
     time::Duration,
@@ -13,18 +14,34 @@ use tracing::{Level, debug, info, trace};
 
 use crate::hl_gossip_config::HyperliquidSeedPeer;
 
+#[derive(Debug)]
+enum MeasureError {
+    Timeout,
+    IOError(std::io::Error),
+}
+
+impl fmt::Display for MeasureError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Timeout => f.debug_tuple("Timeout").finish(),
+            Self::IOError(err) => f.debug_tuple("IOError").field(&err).finish(),
+        }
+    }
+}
+
 // TODO: return failure reason for debugging
 async fn measure_node_latency(
     ip: Ipv4Addr,
     port: u16,
     timeout_duration: Duration,
-) -> Option<Duration> {
+) -> Result<Duration, MeasureError> {
     let addr = SocketAddr::new(ip.into(), port);
     let start = Instant::now();
 
     match timeout(timeout_duration, TcpStream::connect(addr)).await {
-        Ok(Ok(_)) => Some(start.elapsed()),
-        _ => None, // Connection failed or timed out
+        Ok(Ok(_)) => Ok(start.elapsed()),
+        Ok(Err(err)) => Err(MeasureError::IOError(err)),
+        Err(/* Elapsed */ _) => Err(MeasureError::Timeout),
     }
 }
 
@@ -64,12 +81,17 @@ pub async fn speedtest_nodes(
 
     for task in tasks {
         let (idx, latency) = task.await?;
-        if let Some(latency) = latency {
-            trace!(node = ?candidates[idx], ?latency, "latency test ok");
-            successful_nodes.push((idx, latency));
-        } else {
-            trace!(node = ?candidates[idx], "latency test failed");
-            failed += 1;
+        let node = &candidates[idx];
+
+        match latency {
+            Ok(latency) => {
+                trace!(?node, ?latency, "latency test ok");
+                successful_nodes.push((idx, latency));
+            }
+            Err(err) => {
+                trace!(%err, ?node, "latency test failed");
+                failed += 1;
+            }
         }
     }
 
@@ -101,11 +123,7 @@ pub async fn speedtest_nodes(
         .into_iter()
         .take(to_take)
         .enumerate()
-        .map(|(idx, (node, latency))| {
-            // Uh-oh, impure map fn
-            info!(idx, ?node, ?latency, "picked seed node");
-
-            node
-        })
+        .inspect(|(idx, (node, latency))| info!(idx, ?node, ?latency, "picked seed node"))
+        .map(|(_, (node, _))| node)
         .collect())
 }
