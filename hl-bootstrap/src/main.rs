@@ -303,10 +303,7 @@ async fn prepare_hl_node(args: &Cli) -> eyre::Result<()> {
             "including extra seed peers from args"
         );
         for extra_seed in &args.seed_peers_extra {
-            seed_nodes.push(HyperliquidSeedPeer {
-                operator_name: "manual".to_string(),
-                ip: *extra_seed,
-            });
+            seed_nodes.push(HyperliquidSeedPeer { ip: *extra_seed });
         }
     }
 

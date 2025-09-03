@@ -1,6 +1,6 @@
 use std::{collections::HashSet, net::Ipv4Addr, str::FromStr};
 
-use eyre::{Context, ContextCompat, bail};
+use eyre::{Context, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::debug;
@@ -67,8 +67,6 @@ impl ToString for HyperliquidChain {
 
 #[derive(Clone, Debug)]
 pub struct HyperliquidSeedPeer {
-    #[allow(dead_code)] // Keeping due to its value in logs
-    pub operator_name: String,
     pub ip: Ipv4Addr,
 }
 
@@ -91,107 +89,33 @@ pub async fn fetch_hyperliquid_seed_peers(
 async fn fetch_mainnet_seed_peers(
     ignored_peers: &HashSet<Ipv4Addr>,
 ) -> eyre::Result<Vec<HyperliquidSeedPeer>> {
-    // Unfortunately there is no other source as of 2025-07-23 for non-validating seed nodes,
-    // so we have to extract these from README.md! Holy fucking shit honestly, but have to make do
-    // with what we have.
-    // Insult to injury, it's now Markdown table
-    let url = "https://github.com/hyperliquid-dex/node/raw/refs/heads/main/README.md";
+    let peer_ips: Vec<Ipv4Addr> = reqwest::Client::new()
+        .post("https://api.hyperliquid.xyz/info")
+        .body(r#"{"type":"gossipRootIps"}"#)
+        .send()
+        .await
+        .wrap_err("failed to get mainnet seed nodes")?
+        .error_for_status()
+        .wrap_err("failed to get mainnet seed nodes")?
+        .json()
+        .await
+        .wrap_err("failed to parse mainnet seed nodes")?;
 
-    // Fetch the README content
-    let response = reqwest::get(url).await?;
-    let content = response.text().await?;
+    if peer_ips.is_empty() {
+        bail!("No seed peers were given from Hyperliquid API");
+    }
 
-    let mut peers = Vec::new();
-
-    // Find the table section that contains the seed peers
-    // Look for the "Mainnet Non-Validator Seed Peers" section
-    let seed_peers_section = content
-        .split("## Mainnet Non-Validator Seed Peers")
-        .nth(1)
-        .wrap_err("could not find 'Mainnet Non-Validator Seed Peers' section from hyperliquid-dex/node README.md")?;
-
-    // Split by next section (starts with ##) to isolate just the peers table
-    let peers_content = seed_peers_section
-        .split("##")
-        .next()
-        .unwrap_or(seed_peers_section);
-
-    // Find the table by looking for lines that start and end with |
-    let lines: Vec<&str> = peers_content.lines().collect();
-    let mut in_table = false;
-    let mut header_found = false;
-
-    for line in lines {
-        let trimmed = line.trim();
-
-        // Skip empty lines
-        if trimmed.is_empty() {
+    let mut seeds = Vec::new();
+    for ip in peer_ips {
+        if ignored_peers.contains(&ip) {
+            debug!(?ip, "skipping ignored seed node");
             continue;
         }
 
-        // Check if this line looks like a markdown table row
-        if trimmed.starts_with('|') && trimmed.ends_with('|') {
-            // Skip separator lines (contains only |, -, and spaces)
-            if trimmed
-                .chars()
-                .all(|c| c == '|' || c == '-' || c.is_whitespace())
-            {
-                in_table = true;
-                continue;
-            }
-
-            // Parse the table cells
-            let cells: Vec<&str> = trimmed
-                .split('|')
-                .map(|cell| cell.trim())
-                .filter(|cell| !cell.is_empty())
-                .collect();
-
-            // Skip header row
-            if !header_found
-                && cells.len() >= 2
-                && (cells[0].to_lowercase().contains("operator")
-                    || cells[1].to_lowercase().contains("root")
-                    || cells[1].to_lowercase().contains("ip"))
-            {
-                header_found = true;
-                in_table = true;
-                continue;
-            }
-
-            // Parse data rows
-            if in_table && header_found && cells.len() >= 2 {
-                let operator_name = cells[0].to_string();
-                let ip_str = cells[1];
-
-                // Parse the IP address
-                match ip_str.parse::<Ipv4Addr>() {
-                    Ok(ip) => {
-                        if ignored_peers.contains(&ip) {
-                            debug!(operator_name, ?ip, "skipping ignored seed node");
-                            continue;
-                        }
-
-                        peers.push(HyperliquidSeedPeer { operator_name, ip });
-                    }
-                    Err(err) => {
-                        debug!(?err, ip_str, "failed to parse ip");
-                        continue;
-                    }
-                }
-            }
-        } else if in_table {
-            // If we were in a table but this line doesn't look like a table row,
-            // we've probably reached the end of the table
-            break;
-        }
+        seeds.push(HyperliquidSeedPeer { ip });
     }
 
-    if peers.is_empty() {
-        bail!("No valid seed peers found in markdown table");
-    }
-
-    Ok(peers)
+    Ok(seeds)
 }
 
 async fn fetch_testnet_seed_peers(
@@ -208,19 +132,14 @@ async fn fetch_testnet_seed_peers(
         .await
         .wrap_err("failed to parse testnet override_gossip_config")?;
 
-    let operator_name = "Imperator.co";
-
     let mut seeds = Vec::new();
     for node in config.root_node_ips {
         if ignored_peers.contains(&node.ip) {
-            debug!(operator_name, ip = ?node.ip, "skipping ignored seed node");
+            debug!(ip = ?node.ip, "skipping ignored seed node");
             continue;
         }
 
-        seeds.push(HyperliquidSeedPeer {
-            operator_name: operator_name.to_string(),
-            ip: node.ip,
-        });
+        seeds.push(HyperliquidSeedPeer { ip: node.ip });
     }
 
     Ok(seeds)
@@ -245,23 +164,6 @@ mod tests {
         dbg!(&config);
         let serialized = serde_json::to_string_pretty(&config)?;
         println!("{serialized}");
-
-        Ok(())
-    }
-
-    // Requires network access
-    #[tokio::test]
-    async fn test_fetch_seed_peers() -> eyre::Result<()> {
-        let ignored_peers = Default::default();
-        let seed_peers =
-            fetch_hyperliquid_seed_peers(HyperliquidChain::Mainnet, &ignored_peers).await?;
-
-        assert!(!seed_peers.is_empty(), "Should have at least one entry");
-
-        println!("Found {} CSV entries", seed_peers.len());
-        for (i, line) in seed_peers.iter().take(3).enumerate() {
-            println!("Entry {}: {:?}", i + 1, line);
-        }
 
         Ok(())
     }
