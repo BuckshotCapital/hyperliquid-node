@@ -2,7 +2,7 @@ use std::{collections::HashSet, net::Ipv4Addr, str::FromStr};
 
 use eyre::{Context, bail};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use tracing::debug;
 
 structstruck::strike! {
@@ -91,7 +91,7 @@ async fn fetch_mainnet_seed_peers(
 ) -> eyre::Result<Vec<HyperliquidSeedPeer>> {
     let peer_ips: Vec<Ipv4Addr> = reqwest::Client::new()
         .post("https://api.hyperliquid.xyz/info")
-        .body(r#"{"type":"gossipRootIps"}"#)
+        .json(&json!({"type": "gossipRootIps"}))
         .send()
         .await
         .wrap_err("failed to get mainnet seed nodes")?
