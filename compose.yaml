@@ -1,19 +1,42 @@
+---
+name: "hyperliquid"
 services:
-  hl-node:
+  node:
+    image: "ghcr.io/buckshotcapital/hyperliquid-node:${NETWORK:-mainnet}"
     build:
       dockerfile: "Dockerfile"
       context: .
     restart: "always"
+    command:
+      - "run-non-validator"
+      - "--write-trades"
+      - "--write-fills"
+      - "--write-order-statuses"
+      - "--write-misc-events"
+      - "--serve-eth-rpc"
+      - "--serve-info"
+      - "--disable-output-file-buffering"
     read_only: true
     sysctls:
       net.ipv6.conf.all.disable_ipv6: "1"
     environment:
+      RUST_LOG: "info,hl_bootstrap=trace,hl_bootstrap::monitor=info"
+      HL_BOOTSTRAP_METRICS_LISTEN_ADDRESS: "0.0.0.0:2112"
       HL_BOOTSTRAP_PRUNE_DATA_INTERVAL: "1h"
+      HL_BOOTSTRAP_PRUNE_DATA_OLDER_THAN: "2h"
     volumes:
-      - "hl-data:/data"
+      - "node-bin:/opt/hl/bin"
+      - "node-data:/data"
     ports:
       - "127.0.0.1:3001:3001"
-      - "4000-4010"
+      - "0.0.0.0:4000-4010:4000-4010"
+    deploy:
+      resources:
+        limits:
+          cpus: "16"
+          memory: "64G"
+          pids: 1024
 
 volumes:
-  hl-data: {}
+  node-bin: {}
+  node-data: {}

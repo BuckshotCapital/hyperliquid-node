@@ -2,6 +2,8 @@
 
 Containerised Hyperliquid node meant primarily for RPC usage
 
+Join the discussion: [@buckshotcapitaltech](https://t.me/buckshotcapitaltech)
+
 ## What?
 
 Turns out hl-node & hl-visor have quite many assumptions about its runtime environment, which might not always be true on containerised workload.
@@ -23,4 +25,6 @@ Features:
 
 ## Running
 
-Build the image, run with binding 4000-4010/tcp to public interface. Hyperliquid RPC will be exposed on port 3001, serving both /evm and /info endpoints.
+Build or obtain the image from [ghcr.io](https://github.com/BuckshotCapital/hyperliquid-node/pkgs/container/hyperliquid-node) (use either `mainnet` or `testnet` tag), run with binding 4000-4010/tcp to public interface. Hyperliquid RPC will be exposed on port 3001, serving both /evm and /info endpoints.
+
+See also example [compose.yaml](compose.yaml)
