@@ -1,38 +1,29 @@
-use std::{fs::File, path::PathBuf};
+use std::{io::Write, path::Path};
 
 use eyre::{Context, ContextCompat};
-use serde::Deserialize;
-use tracing::debug;
+use serde::Serialize;
+use tempfile::NamedTempFile;
 
 use crate::hl_gossip_config::HyperliquidChain;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize)]
 pub struct VisorConfig {
     pub chain: HyperliquidChain,
 }
 
-pub fn read_hl_visor_config(config_file: Option<&PathBuf>) -> eyre::Result<VisorConfig> {
-    let config_file = match config_file {
-        Some(config_file) => config_file,
-        None => {
-            // NOTE: hl-visor expects visor.json next to itself as of 2025-07-23
-            let path = which::which("hl-visor")?;
-            debug!(?path, "found hl-visor in PATH");
+pub fn write_hl_visor_config(
+    path: impl AsRef<Path>,
+    network: HyperliquidChain,
+) -> eyre::Result<()> {
+    let mut file =
+        NamedTempFile::new_in(path.as_ref().parent().wrap_err("can't get parent path")?)?;
 
-            let hl_visor_dir = path
-                .parent()
-                .wrap_err("failed to determine hl-visor directory")?;
+    serde_json::to_writer(file.as_file_mut(), &VisorConfig { chain: network })
+        .wrap_err("failed to serialize hl-visor config")?;
+    file.flush()?;
 
-            &hl_visor_dir.join("visor.json")
-        }
-    };
+    file.persist(path)
+        .wrap_err("failed to write hl-visor config")?;
 
-    let config = File::open(config_file)
-        .wrap_err_with(|| format!("failed to open hl-visor config at {config_file:?}"))?;
-
-    debug!(?config_file, "found hl-visor config file");
-    let config: VisorConfig = serde_json::from_reader(config)
-        .wrap_err_with(|| format!("failed to parse hl-visor config at {config_file:?}"))?;
-
-    Ok(config)
+    Ok(())
 }

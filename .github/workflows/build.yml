@@ -21,13 +21,6 @@ jobs:
       packages: "write"
       id-token: "write"
       attestations: "write"
-    strategy:
-      matrix:
-        include:
-          - network: "Mainnet"
-            tag: "mainnet"
-          - network: "Testnet"
-            tag: "testnet"
 
     steps:
       - name: "Checkout repository"
@@ -52,11 +45,12 @@ jobs:
         with:
           context: "."
           push: "${{ github.event_name != 'pull_request' }}"
-          tags: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.tag }}"
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:mainnet
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testnet
           cache-from: "type=gha"
           cache-to: "type=gha,mode=max"
-          build-args: |
-            NETWORK=${{ matrix.network }}
 
       - name: "Generate artifact attestation"
         if: "${{ github.event_name != 'pull_request' }}"

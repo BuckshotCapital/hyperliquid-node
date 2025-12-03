@@ -32,7 +32,7 @@ use crate::{
     hl_gossip_config::{
         HyperliquidChain, HyperliquidSeedPeer, OverrideGossipConfig, fetch_hyperliquid_seed_peers,
     },
-    hl_visor::config::read_hl_visor_config,
+    hl_visor::{config::write_hl_visor_config, download::download_hl_visor},
     prune::prune_worker_task,
     speedtest::speedtest_nodes,
     sysctl::read_sysctl,
@@ -40,9 +40,9 @@ use crate::{
 
 #[derive(Clone, Debug, Parser)]
 struct Cli {
-    /// visor.json path, used to determine the network to use
-    #[arg(long, env = "HL_BOOTSTRAP_VISOR_CONFIG_PATH")]
-    visor_config_path: Option<PathBuf>,
+    /// Path where to store hl-visor and its files
+    #[arg(long, env = "HL_BOOTSTRAP_VISOR_BINARY_DIRECTORY")]
+    visor_binary_directory: PathBuf,
 
     /// override_gossip_config.json path
     #[arg(
@@ -117,8 +117,8 @@ struct Cli {
     metrics_healthy_drift_threshold: DurationString,
 
     /// Chain to set up configuration for
-    #[arg(long, env = "HL_BOOTSTRAP_NETWORK")]
-    network: Option<HyperliquidChain>,
+    #[arg(long, env = "HL_BOOTSTRAP_NETWORK", default_value_t = HyperliquidChain::Mainnet)]
+    network: HyperliquidChain,
 
     /// Free form args to execute after the setup
     args: Vec<OsString>,
@@ -245,21 +245,11 @@ async fn prepare_hl_node(args: &Cli) -> eyre::Result<()> {
         }
     }
 
-    let network = match args.network {
-        Some(network) => {
-            debug!(?network, "network specified via args");
-            network
-        }
-        None => {
-            debug!("no network specified, reading from hl-visor configuration");
-            let config = read_hl_visor_config(args.visor_config_path.as_ref())?;
+    info!(network = ?args.network, "setting up hl-visor");
+    download_hl_visor(&args.visor_binary_directory, args.network).await?;
+    write_hl_visor_config(args.visor_binary_directory.join("visor.json"), args.network)?;
 
-            debug!(network = ?config.chain, "read hl-visor configuration");
-            config.chain
-        }
-    };
-    info!(?network, "preparing hl-node configuration");
-
+    info!(network = ?args.network, "preparing hl-node configuration");
     let ignored_seed_peers = HashSet::from_iter(args.seed_peers_ignored.clone());
 
     if let Ok(metadata) = fs::metadata(&args.override_gossip_config_path)
@@ -290,15 +280,15 @@ async fn prepare_hl_node(args: &Cli) -> eyre::Result<()> {
         .wrap_err("failed to determine override_gossip_config.json directory")?;
 
     // TODO: load existing configuration
-    let mut config = OverrideGossipConfig::new(network);
+    let mut config = OverrideGossipConfig::new(args.network);
 
-    info!(?network, ?ignored_seed_peers, "fetching seed nodes");
-    let mut seed_nodes = fetch_hyperliquid_seed_peers(network, &ignored_seed_peers).await?;
-    info!(?network, count = seed_nodes.len(), "got seed nodes");
+    info!(network = ?args.network, ?ignored_seed_peers, "fetching seed nodes");
+    let mut seed_nodes = fetch_hyperliquid_seed_peers(args.network, &ignored_seed_peers).await?;
+    info!(network = ?args.network, count = seed_nodes.len(), "got seed nodes");
 
     if !args.seed_peers_extra.is_empty() {
         info!(
-            ?network,
+            network = ?args.network,
             count = args.seed_peers_extra.len(),
             "including extra seed peers from args"
         );

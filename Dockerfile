@@ -63,11 +63,9 @@ SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 RUN <<-EOF
 groupadd -r hyperliquid -g 10001
 useradd -r -g hyperliquid -u 10001 -d /home/hyperliquid -s /bin/bash hyperliquid
-EOF
 
-RUN <<-EOF
 # Create base directory structure
-install -d -m 755 -o root -g root /opt/hl /opt/hl/lib
+install -d -m 755 -o root -g root /opt/hl
 install -d -m 755 -o hyperliquid -g hyperliquid /home/hyperliquid /data /opt/hl/bin
 EOF
 
@@ -76,52 +74,16 @@ apt-get update
 apt-get install -y curl ca-certificates catatonit gnupg2
 EOF
 
-# Copy Hyperliquid public key & import it. This is also required by hl-visor to verify downloaded binaries
-COPY ./etc/hl-pubkey.asc /root/hl-pubkey.asc
-RUN <<-EOF
-gpg --import /root/hl-pubkey.asc
-rm /root/hl-pubkey.asc
-EOF
-
-ARG NETWORK="Mainnet"
-
-RUN <<-EOF
-binary_url=""
-sig_url=""
-case "${NETWORK}" in
-	Mainnet)
-		binary_url="https://binaries.hyperliquid.xyz/Mainnet/hl-visor"
-		sig_url="${binary_url}.asc"
-		;;
-	Testnet)
-		binary_url="https://binaries.hyperliquid-testnet.xyz/Testnet/hl-visor"
-		sig_url="${binary_url}.asc"
-		;;
-	*)
-		echo >&2 "Unsupported network ${NETWORK}"
-		exit 1
-		;;
-esac
-
-echo '{"chain": "'"${NETWORK}"'"}' > /opt/hl/lib/visor.json
-ln -svf ../lib/visor.json /opt/hl/bin/visor.json
-
-curl -o /opt/hl/bin/hl-visor "${binary_url}"
-curl -o /tmp/hl-visor.asc "${sig_url}"
-
-gpg --verify /tmp/hl-visor.asc /opt/hl/bin/hl-visor
-chmod 755 /opt/hl/bin/hl-visor
-rm /tmp/hl-visor.asc
-EOF
-
-RUN <<-EOF
-cp -rv /root/.gnupg /home/hyperliquid/.gnupg
-chown -R hyperliquid:hyperliquid /home/hyperliquid/.gnupg
-EOF
-
 COPY --from=hl-bootstrap-builder /build/hl-bootstrap /usr/local/bin/hl-bootstrap
 
 USER hyperliquid:hyperliquid
+
+# Copy Hyperliquid public key & import it. This is also required by hl-visor to verify downloaded binaries
+COPY ./etc/hl-pubkey.asc /home/hyperliquid/hl-pubkey.asc
+RUN <<-EOF
+gpg --import /home/hyperliquid/hl-pubkey.asc
+rm /home/hyperliquid/hl-pubkey.asc
+EOF
 
 VOLUME /opt/hl/bin
 VOLUME /data
@@ -135,10 +97,11 @@ EOF
 
 ENV PATH=/opt/hl/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
+ENV HL_BOOTSTRAP_VISOR_BINARY_DIRECTORY=/opt/hl/bin
 ENV HL_BOOTSTRAP_OVERRIDE_GOSSIP_CONFIG_MAX_AGE=15m
 ENV HL_BOOTSTRAP_SEED_PEERS_AMOUNT=5
 ENV HL_BOOTSTRAP_SEED_PEERS_MAX_LATENCY=80ms
-ENV HL_BOOTSTRAP_NETWORK=${NETWORK}
+ENV HL_BOOTSTRAP_NETWORK=Mainnet
 
 # RPC
 EXPOSE 3001/tcp
