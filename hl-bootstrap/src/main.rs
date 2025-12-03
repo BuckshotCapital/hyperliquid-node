@@ -233,15 +233,12 @@ fn run_node(rt: Runtime, args: &Cli) -> eyre::Result<()> {
 }
 
 async fn prepare_hl_node(args: &Cli) -> eyre::Result<()> {
-    if !args.ignore_ipv6_enabled {
+    if cfg!(target_os = "linux") && !args.ignore_ipv6_enabled {
         let key_ipv6_all = "net.ipv6.conf.all.disable_ipv6";
         if let Ok(value) = read_sysctl(key_ipv6_all)
             && value == "0"
         {
-            warn!(
-                key = key_ipv6_all,
-                value, "ipv6 appears to be enabled, node might not start up properly"
-            );
+            bail!("ipv6 appears to be enabled, set sysctl net.ipv6.conf.all.disable_ipv6=0");
         }
     }
 
