@@ -22,7 +22,7 @@ use tracing_subscriber::{
 };
 
 mod hl_gossip_config;
-mod hl_visor_config;
+mod hl_visor;
 mod monitor;
 mod prune;
 mod speedtest;
@@ -32,7 +32,7 @@ use crate::{
     hl_gossip_config::{
         HyperliquidChain, HyperliquidSeedPeer, OverrideGossipConfig, fetch_hyperliquid_seed_peers,
     },
-    hl_visor_config::read_hl_visor_config,
+    hl_visor::config::read_hl_visor_config,
     prune::prune_worker_task,
     speedtest::speedtest_nodes,
     sysctl::read_sysctl,
