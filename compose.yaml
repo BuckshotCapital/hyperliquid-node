@@ -2,7 +2,7 @@
 name: "hyperliquid"
 services:
   node:
-    image: "ghcr.io/buckshotcapital/hyperliquid-node:${NETWORK:-mainnet}"
+    image: "ghcr.io/buckshotcapital/hyperliquid-node:latest"
     build:
       dockerfile: "Dockerfile"
       context: .
@@ -22,6 +22,7 @@ services:
     environment:
       RUST_LOG: "info,hl_bootstrap=trace,hl_bootstrap::monitor=info"
       HL_BOOTSTRAP_METRICS_LISTEN_ADDRESS: "0.0.0.0:2112"
+      HL_BOOTSTRAP_NETWORK: "${NETWORK:-mainnet}"
       HL_BOOTSTRAP_PRUNE_DATA_INTERVAL: "1h"
       HL_BOOTSTRAP_PRUNE_DATA_OLDER_THAN: "2h"
     volumes:
