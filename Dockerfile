@@ -66,7 +66,8 @@ useradd -r -g hyperliquid -u 10001 -d /home/hyperliquid -s /bin/bash hyperliquid
 
 # Create base directory structure
 install -d -m 755 -o root -g root /opt/hl
-install -d -m 755 -o hyperliquid -g hyperliquid /home/hyperliquid /data /opt/hl/bin
+install -d -m 755 -o hyperliquid -g hyperliquid /home/hyperliquid /data /data/hl /data/hl/data /opt/hl/bin
+ln -s /data/hl /home/hyperliquid/hl
 EOF
 
 RUN <<-EOF
@@ -74,26 +75,18 @@ apt-get update
 apt-get install -y curl ca-certificates catatonit gnupg2
 EOF
 
-COPY --from=hl-bootstrap-builder /build/hl-bootstrap /usr/local/bin/hl-bootstrap
-
 USER hyperliquid:hyperliquid
-
-# Copy Hyperliquid public key & import it. This is also required by hl-visor to verify downloaded binaries
-COPY ./etc/hl-pubkey.asc /home/hyperliquid/hl-pubkey.asc
-RUN <<-EOF
-gpg --import /home/hyperliquid/hl-pubkey.asc
-rm /home/hyperliquid/hl-pubkey.asc
-EOF
 
 VOLUME /opt/hl/bin
 VOLUME /data
 WORKDIR /data
 
-RUN <<-EOF
-mkdir -p /data/hl/data
-ln -s /data/hl /home/hyperliquid/hl
-chown -R hyperliquid:hyperliquid /data
+# Import Hypqliquid public key. This is also required by hl-visor to verify downloaded binaries
+RUN --mount=source=.,target=. <<-EOF
+gpg --import etc/hl-pubkey.asc
 EOF
+
+COPY --from=hl-bootstrap-builder --chown=root:root /build/hl-bootstrap /usr/local/bin/hl-bootstrap
 
 ENV PATH=/opt/hl/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
