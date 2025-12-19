@@ -4,6 +4,7 @@ use std::{
     ffi::OsString,
     fs::{self},
     net::{Ipv4Addr, SocketAddr},
+    os::unix::process::CommandExt,
     path::PathBuf,
     process::Command,
 };
@@ -13,7 +14,7 @@ use duration_string::DurationString;
 use eyre::{Context, ContextCompat, bail};
 use tempfile::NamedTempFile;
 use tokio::runtime::{Builder, Runtime};
-use tracing::{debug, error, info, level_filters::LevelFilter, trace, warn};
+use tracing::{debug, error, info, level_filters::LevelFilter, trace};
 use tracing_subscriber::{
     EnvFilter,
     fmt::{self, format::FmtSpan},
@@ -133,10 +134,7 @@ fn main() -> eyre::Result<()> {
         && first_arg != "run-non-validator"
         && first_arg != "run-validator"
     {
-        let err = exec::Command::new(&args.args[0])
-            .args(&args.args[1..])
-            .exec();
-
+        let err = Command::new(&args.args[0]).args(&args.args[1..]).exec();
         eprintln!("{err}");
         std::process::exit(1);
     }
@@ -182,8 +180,10 @@ fn run_node(rt: Runtime, args: &Cli) -> eyre::Result<()> {
     info!(args = ?args.args, "setup done, executing hl-visor");
 
     if args.prune_data_interval.is_none() && args.metrics_listen_address.is_none() {
+        drop(rt);
+
         // Just exec into the child
-        let err = exec::Command::new("hl-visor").args(&args.args).exec();
+        let err = Command::new("hl-visor").args(&args.args).exec();
         error!(?err, ?args.args, "failed to exec");
         std::process::exit(1);
     }
