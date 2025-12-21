@@ -3,6 +3,7 @@ use std::{
     env::current_dir,
     ffi::OsString,
     fs::{self},
+    io::Write,
     net::{Ipv4Addr, SocketAddr},
     os::unix::process::CommandExt,
     path::PathBuf,
@@ -53,6 +54,14 @@ struct Cli {
     )]
     override_gossip_config_path: PathBuf,
 
+    /// override_public_ip_address path
+    #[arg(
+        long,
+        env = "HL_BOOTSTRAP_OVERRIDE_PUBLIC_IP_ADDRESS_FILE",
+        default_value = "./override_public_ip_address"
+    )]
+    override_public_ip_address_file_path: PathBuf,
+
     /// override_gossip_config.json max age when new peers will be checked & set up
     #[arg(
         long,
@@ -80,6 +89,10 @@ struct Cli {
     /// Extra seed peers to consider
     #[arg(long, env = "HL_BOOTSTRAP_SEED_PEERS_EXTRA", value_delimiter = ',')]
     seed_peers_extra: Vec<Ipv4Addr>,
+
+    /// External IPv4 address of this node
+    #[arg(long, env = "HL_BOOTSTRAP_EXTERNAL_IPV4")]
+    external_ipv4: Option<Ipv4Addr>,
 
     /// Whether to ignore net.ipv6.conf.all.disable_ipv6 == 1. Due to hl-node bug, IPv6 being available to the node breaks it.
     #[arg(
@@ -233,7 +246,7 @@ fn run_node(rt: Runtime, args: &Cli) -> eyre::Result<()> {
 }
 
 async fn prepare_hl_node(args: &Cli) -> eyre::Result<()> {
-    if cfg!(target_os = "linux") && !args.ignore_ipv6_enabled {
+    if cfg!(target_os = "linux") && !args.ignore_ipv6_enabled && args.external_ipv4.is_none() {
         let key_ipv6_all = "net.ipv6.conf.all.disable_ipv6";
         if let Ok(value) = read_sysctl(key_ipv6_all)
             && value == "0"
@@ -333,6 +346,16 @@ async fn prepare_hl_node(args: &Cli) -> eyre::Result<()> {
     new_config_file
         .persist(&args.override_gossip_config_path)
         .wrap_err("failed to replace override_gossip_config.json")?;
+
+    if let Some(external_ipv4) = args.external_ipv4 {
+        let mut new_override_public_ip_address = NamedTempFile::new_in(config_path_directory)?;
+        writeln!(&mut new_override_public_ip_address, "{external_ipv4}")
+            .wrap_err("failed to write external ipv4")?;
+
+        new_override_public_ip_address
+            .persist(&args.override_public_ip_address_file_path)
+            .wrap_err("failed to replace override_public_ip_address")?;
+    }
 
     Ok(())
 }
