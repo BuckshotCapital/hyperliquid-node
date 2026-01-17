@@ -66,7 +66,7 @@ useradd -r -g hyperliquid -u 10001 -d /home/hyperliquid -s /bin/bash hyperliquid
 
 # Create base directory structure
 install -d -m 755 -o root -g root /opt/hl
-install -d -m 755 -o hyperliquid -g hyperliquid /home/hyperliquid /data /data/hl /data/hl/data /opt/hl/bin
+install -d -m 755 -o hyperliquid -g hyperliquid /home/hyperliquid /data /data/hl /data/hl/data /data/snapshots /opt/hl/bin
 ln -s /data/hl /home/hyperliquid/hl
 EOF
 
@@ -79,6 +79,7 @@ USER hyperliquid:hyperliquid
 
 VOLUME /opt/hl/bin
 VOLUME /data
+VOLUME /data/snapshots
 WORKDIR /data
 
 # Import Hypqliquid public key. This is also required by hl-visor to verify downloaded binaries
