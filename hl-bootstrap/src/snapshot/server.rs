@@ -78,13 +78,11 @@ async fn snapshot(
 }
 
 pub async fn run_snapshot_server(
-    data_dir: impl AsRef<Path>,
+    snapshot_directory: impl AsRef<Path>,
     listen_address: SocketAddr,
 ) -> eyre::Result<()> {
     let state = SnapshotServer {
-        // TODO: should not create files under hl/data
-        // Configure pruner to look into our managed directory instead.
-        snapshot_directory: data_dir.as_ref().join("hl/data/hl_bootstrap_snapshots"),
+        snapshot_directory: snapshot_directory.as_ref().into(),
     };
 
     let listener = TcpListener::bind(listen_address).await?;
