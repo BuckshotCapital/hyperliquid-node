@@ -23,10 +23,12 @@ use tracing_subscriber::{
     util::SubscriberInitExt,
 };
 
+mod axum_ext;
 mod hl_gossip_config;
 mod hl_visor;
 mod monitor;
 mod prune;
+mod snapshot;
 mod speedtest;
 mod sysctl;
 
@@ -134,8 +136,20 @@ struct Cli {
     #[arg(long, env = "HL_BOOTSTRAP_NETWORK", default_value_t = HyperliquidChain::Mainnet)]
     network: HyperliquidChain,
 
+    /// fileSnapshot request server listen address
+    #[arg(long, env = "HL_BOOTSTRAP_SNAPSHOT_SERVER_LISTEN_ADDRESS")]
+    snapshot_server_listen_address: Option<SocketAddr>,
+
     /// Free form args to execute after the setup
     args: Vec<OsString>,
+}
+
+impl Cli {
+    fn should_keep_bootstrap_running(&self) -> bool {
+        self.prune_data_interval.is_some()
+            || self.metrics_listen_address.is_some()
+            || self.snapshot_server_listen_address.is_some()
+    }
 }
 
 fn main() -> eyre::Result<()> {
@@ -168,9 +182,7 @@ fn main() -> eyre::Result<()> {
 
     trace!(?args, "args");
 
-    let use_mt = args.prune_data_interval.is_some() || args.metrics_listen_address.is_some();
-
-    let runtime = if use_mt {
+    let runtime = if args.should_keep_bootstrap_running() {
         Builder::new_multi_thread()
     } else {
         Builder::new_current_thread()
@@ -192,7 +204,7 @@ fn main() -> eyre::Result<()> {
 fn run_node(rt: Runtime, args: &Cli) -> eyre::Result<()> {
     info!(args = ?args.args, "setup done, executing hl-visor");
 
-    if args.prune_data_interval.is_none() && args.metrics_listen_address.is_none() {
+    if !args.should_keep_bootstrap_running() {
         drop(rt);
 
         // Just exec into the child
@@ -206,6 +218,7 @@ fn run_node(rt: Runtime, args: &Cli) -> eyre::Result<()> {
 
     let _prune_task = args.prune_data_interval.map(|prune_interval| {
         rt.spawn({
+            let data_directory = data_directory.clone();
             let prune_data_older_than = args.prune_data_older_than;
 
             prune_worker_task(
@@ -231,6 +244,19 @@ fn run_node(rt: Runtime, args: &Cli) -> eyre::Result<()> {
                     .await
             {
                 error!(?err, "failed to start metrics server")
+            }
+        })
+    });
+
+    let _snapshot_server = args.snapshot_server_listen_address.map(|address| {
+        rt.spawn(async move {
+            let data_directory = data_directory.clone();
+
+            info!(%address, "starting snapshot server");
+            if let Err(err) =
+                crate::snapshot::server::run_snapshot_server(data_directory, address).await
+            {
+                error!(?err, "failed to start snapshot server")
             }
         })
     });
