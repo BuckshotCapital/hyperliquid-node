@@ -11,7 +11,7 @@ pub async fn prune_worker_task<P: AsRef<Path>>(
     prune_interval: Duration,
     prune_older_than: Duration,
 ) {
-    let base_path = base_path.as_ref().join("hl/data");
+    let base_path = base_path.as_ref();
 
     let mut interval = interval(prune_interval);
     interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
