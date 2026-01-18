@@ -28,6 +28,7 @@ services:
     volumes:
       - "node-bin:/opt/hl/bin"
       - "node-data:/data"
+      - "node-snapshot:/data/snapshot"
     ports:
       - "127.0.0.1:3001:3001"
       - "0.0.0.0:4000-4010:4000-4010"
@@ -41,3 +42,4 @@ services:
 volumes:
   node-bin: {}
   node-data: {}
+  node-snapshot: {}
