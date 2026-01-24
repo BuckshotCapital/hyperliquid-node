@@ -70,9 +70,6 @@ async fn snapshot(
 
     // TODO: assert response
 
-    // TODO: unsure if this is needed
-    tokio::time::sleep(Duration::from_millis(20)).await;
-
     if !stream_contents {
         return Ok((
             StatusCode::OK,
