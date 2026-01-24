@@ -5,9 +5,11 @@ on:
   push:
     branches:
       - "master"
+      - "dev"
   pull_request:
     branches:
       - "master"
+      - "dev"
 
 env:
   REGISTRY: "ghcr.io"
@@ -39,16 +41,28 @@ jobs:
           username: "${{ github.actor }}"
           password: "${{ secrets.GITHUB_TOKEN }}"
 
+      - name: "Set image tags"
+        id: "tags"
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/dev" ]; then
+            echo "tags<<EOF" >> $GITHUB_OUTPUT
+            echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "tags<<EOF" >> $GITHUB_OUTPUT
+            echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
+            echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:mainnet" >> $GITHUB_OUTPUT
+            echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testnet" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
       - name: "Build and push Docker image"
         id: "build"
         uses: "docker/build-push-action@v6"
         with:
           context: "."
           push: "${{ github.event_name != 'pull_request' }}"
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:mainnet
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testnet
+          tags: "${{ steps.tags.outputs.tags }}"
           cache-from: "type=gha"
           cache-to: "type=gha,mode=max"
 
