@@ -11,6 +11,7 @@ use axum::routing::get;
 use axum::{Router, extract::State};
 use reqwest::{Client, ClientBuilder, StatusCode};
 use serde::Deserialize;
+use serde_json::json;
 use tokio::fs::File;
 use tokio::net::TcpListener;
 use tokio_util::io::ReaderStream;
@@ -38,6 +39,9 @@ struct SnapshotRequest {
         default = "default_include_height_in_output"
     )]
     include_height_in_output: bool,
+
+    #[serde(rename = "streamContents", default)]
+    stream_contents: bool,
 }
 
 fn default_include_height_in_output() -> bool {
@@ -49,6 +53,7 @@ async fn snapshot(
     Query(SnapshotRequest {
         snapshot,
         include_height_in_output,
+        stream_contents,
     }): Query<SnapshotRequest>,
 ) -> HttpResult<impl IntoResponse> {
     let snapshot_path = super::create_file_snapshot_path(&state.snapshot_directory, &snapshot);
@@ -66,6 +71,17 @@ async fn snapshot(
 
     // TODO: unsure if this is needed
     tokio::time::sleep(Duration::from_millis(20)).await;
+
+    if !stream_contents {
+        return Ok((
+            StatusCode::OK,
+            [(CONTENT_TYPE, "application/json")],
+            Json(json!({
+                "path": snapshot_path.to_string_lossy(),
+            })),
+        )
+            .into_response());
+    }
 
     let stream = ReaderStream::new(File::open(snapshot_path).await?);
 

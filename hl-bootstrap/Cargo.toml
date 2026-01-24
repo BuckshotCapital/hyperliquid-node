@@ -4,11 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-axum = { version = "0.8.4", default-features = false, features = [
-    "tokio",
-    "http1",
-    "query",
-] }
+axum = { version = "0.8.4", default-features = false, features = ["tokio", "http1", "query", "json"] }
 clap = { version = "4.5.41", features = ["env", "derive"] }
 duration-string = "0.5.2"
 eyre = "0.6.12"
