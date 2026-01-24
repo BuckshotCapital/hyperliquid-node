@@ -13,11 +13,11 @@ pub mod server;
 pub enum FileSnapshotType {
     #[serde(rename = "l4Snapshots")]
     L4Snapshots {
-        #[serde_as(as = "DisplayFromStr")]
+        #[serde_as(deserialize_as = "DisplayFromStr")]
         #[serde(rename = "includeUsers", default)]
         include_users: bool,
 
-        #[serde_as(as = "DisplayFromStr")]
+        #[serde_as(deserialize_as = "DisplayFromStr")]
         #[serde(rename = "includeTriggerOrders", default)]
         include_trigger_orders: bool,
     },
