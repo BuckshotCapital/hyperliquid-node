@@ -2,18 +2,22 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use serde_with::{serde_as, DisplayFromStr};
 use uuid::Uuid;
 
 pub mod server;
 
+#[serde_as]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type")]
 pub enum FileSnapshotType {
     #[serde(rename = "l4Snapshots")]
     L4Snapshots {
+        #[serde_as(as = "DisplayFromStr")]
         #[serde(rename = "includeUsers", default)]
         include_users: bool,
 
+        #[serde_as(as = "DisplayFromStr")]
         #[serde(rename = "includeTriggerOrders", default)]
         include_trigger_orders: bool,
     },
