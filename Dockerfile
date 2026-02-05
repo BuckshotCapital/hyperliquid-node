@@ -66,7 +66,7 @@ useradd -r -g hyperliquid -u 10001 -d /home/hyperliquid -s /bin/bash hyperliquid
 
 # Create base directory structure
 install -d -m 755 -o root -g root /opt/hl
-install -d -m 755 -o hyperliquid -g hyperliquid /home/hyperliquid /data /data/hl /data/hl/data /opt/hl/bin
+install -d -m 755 -o hyperliquid -g hyperliquid /home/hyperliquid /data /data/hl /data/hl/data /data/snapshots /opt/hl/bin
 ln -s /data/hl /home/hyperliquid/hl
 EOF
 
@@ -79,6 +79,7 @@ USER hyperliquid:hyperliquid
 
 VOLUME /opt/hl/bin
 VOLUME /data
+VOLUME /data/snapshots
 WORKDIR /data
 
 # Import Hypqliquid public key. This is also required by hl-visor to verify downloaded binaries
@@ -95,10 +96,17 @@ ENV HL_BOOTSTRAP_OVERRIDE_GOSSIP_CONFIG_MAX_AGE=15m
 ENV HL_BOOTSTRAP_SEED_PEERS_AMOUNT=5
 ENV HL_BOOTSTRAP_SEED_PEERS_MAX_LATENCY=80ms
 ENV HL_BOOTSTRAP_NETWORK=Mainnet
+ENV HL_BOOTSTRAP_METRICS_LISTEN_ADDRESS=0.0.0.0:2112
+ENV HL_BOOTSTRAP_SNAPSHOT_SERVER_LISTEN_ADDRESS=0.0.0.0:2113
 
 # RPC
 EXPOSE 3001/tcp
 # P2P
 EXPOSE 4000-4010/tcp
+# Metrics
+EXPOSE 2112/tcp
+# Snapshot server
+EXPOSE 2113/tcp
+
 ENTRYPOINT ["/usr/bin/catatonit", "--", "hl-bootstrap", "--override-gossip-config-path=/data/override_gossip_config.json", "--"]
 CMD ["run-non-validator", "--write-trades", "--write-fills", "--write-order-statuses", "--serve-eth-rpc", "--serve-info", "--disable-output-file-buffering"]
