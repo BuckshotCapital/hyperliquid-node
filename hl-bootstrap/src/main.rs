@@ -94,7 +94,7 @@ struct Cli {
     #[arg(long, env = "HL_BOOTSTRAP_EXTERNAL_IPV4")]
     external_ipv4: Option<Ipv4Addr>,
 
-    /// Whether to ignore net.ipv6.conf.all.disable_ipv6 == 1. Due to hl-node bug, IPv6 being available to the node breaks it.
+    /// Whether to ignore net.ipv6.conf.all.disable_ipv6 == 0. Due to hl-node bug, IPv6 being available to the node breaks it.
     #[arg(
         long,
         env = "HL_BOOTSTRAP_IGNORE_IPv6_ENABLED",
@@ -251,7 +251,7 @@ async fn prepare_hl_node(args: &Cli) -> eyre::Result<()> {
         if let Ok(value) = read_sysctl(key_ipv6_all)
             && value == "0"
         {
-            bail!("ipv6 appears to be enabled, set sysctl net.ipv6.conf.all.disable_ipv6=0");
+            bail!("ipv6 appears to be enabled, set sysctl net.ipv6.conf.all.disable_ipv6=1");
         }
     }
 
