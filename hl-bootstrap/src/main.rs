@@ -90,6 +90,10 @@ struct Cli {
     #[arg(long, env = "HL_BOOTSTRAP_SEED_PEERS_EXTRA", value_delimiter = ',')]
     seed_peers_extra: Vec<Ipv4Addr>,
 
+    /// Whether to configure node to obtain more peers from the network
+    #[arg(long, env = "HL_BOOTSTRAP_TRY_NEW_PEERS", default_value_t = false)]
+    try_new_peers: bool,
+
     /// External IPv4 address of this node
     #[arg(long, env = "HL_BOOTSTRAP_EXTERNAL_IPV4")]
     external_ipv4: Option<Ipv4Addr>,
@@ -290,7 +294,7 @@ async fn prepare_hl_node(args: &Cli) -> eyre::Result<()> {
         .wrap_err("failed to determine override_gossip_config.json directory")?;
 
     // TODO: load existing configuration
-    let mut config = OverrideGossipConfig::new(args.network);
+    let mut config = OverrideGossipConfig::new(args.network, args.try_new_peers);
 
     info!(network = ?args.network, ?ignored_seed_peers, "fetching seed nodes");
     let mut seed_nodes = fetch_hyperliquid_seed_peers(args.network, &ignored_seed_peers).await?;

@@ -31,10 +31,10 @@ structstruck::strike! {
 }
 
 impl OverrideGossipConfig {
-    pub fn new(chain: HyperliquidChain) -> Self {
+    pub fn new(chain: HyperliquidChain, try_new_peers: bool) -> Self {
         Self {
             root_node_ips: Default::default(),
-            try_new_peers: true,
+            try_new_peers,
             chain,
             n_gossip_peers: None,
             unknown: Default::default(),
