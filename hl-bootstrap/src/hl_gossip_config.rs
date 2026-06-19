@@ -25,6 +25,8 @@ structstruck::strike! {
         },
         #[serde(skip_serializing_if = "Option::is_none")]
         pub n_gossip_peers: Option<u16>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub reserved_peer_ips: Vec<Ipv4Addr>,
         #[serde(flatten, default)]
         pub unknown: Value,
     }
@@ -37,6 +39,7 @@ impl OverrideGossipConfig {
             try_new_peers,
             chain,
             n_gossip_peers: None,
+            reserved_peer_ips: Default::default(),
             unknown: Default::default(),
         }
     }
@@ -298,8 +301,10 @@ mod tests {
 
         let config: OverrideGossipConfig = serde_json::from_str(config_snippet)?;
         dbg!(&config);
+        assert_eq!(config.reserved_peer_ips, vec![Ipv4Addr::new(5, 6, 7, 8)]);
         let serialized = serde_json::to_string_pretty(&config)?;
         println!("{serialized}");
+        assert!(serialized.contains("reserved_peer_ips"));
 
         Ok(())
     }

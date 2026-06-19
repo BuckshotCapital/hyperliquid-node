@@ -90,6 +90,10 @@ struct Cli {
     #[arg(long, env = "HL_BOOTSTRAP_SEED_PEERS_EXTRA", value_delimiter = ',')]
     seed_peers_extra: Vec<Ipv4Addr>,
 
+    /// Reserved peers to keep connected regardless of seed peer selection
+    #[arg(long, env = "HL_BOOTSTRAP_RESERVED_PEERS", value_delimiter = ',')]
+    reserved_peers: Vec<Ipv4Addr>,
+
     /// Whether to configure node to obtain more peers from the network
     #[arg(long, env = "HL_BOOTSTRAP_TRY_NEW_PEERS", default_value_t = false)]
     try_new_peers: bool,
@@ -295,6 +299,9 @@ async fn prepare_hl_node(args: &Cli) -> eyre::Result<()> {
 
     // TODO: load existing configuration
     let mut config = OverrideGossipConfig::new(args.network, args.try_new_peers);
+    config
+        .reserved_peer_ips
+        .extend(args.reserved_peers.iter().copied());
 
     info!(network = ?args.network, ?ignored_seed_peers, "fetching seed nodes");
     let mut seed_nodes = fetch_hyperliquid_seed_peers(args.network, &ignored_seed_peers).await?;
